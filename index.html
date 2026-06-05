@@ -266,16 +266,32 @@ class Tank {
         this.col = Math.round((this.x - CELL / 2) / CELL);
         this.row = Math.round((this.y - CELL / 2) / CELL);
       } else {
+        // Blocked — try other directions immediately
         this.moveCooldown = 0;
+        this.aiTimer = 0;
       }
       return;
     }
 
     this.aiTimer--;
     if (this.aiTimer <= 0) {
-      this.aiTimer = 30 + Math.floor(Math.random() * 60);
-      this.dir = Math.floor(Math.random() * 4);
-      this.moveCooldown = 20 + Math.floor(Math.random() * 40);
+      this.aiTimer = 30 + Math.floor(Math.random() * 50);
+      // Pick a direction that is actually passable
+      let dirs = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+      let found = false;
+      for (let d of dirs) {
+        let vec = DIR_VECTORS[d];
+        let nx = this.x + vec.x * this.speed * 5;
+        let ny = this.y + vec.y * this.speed * 5;
+        if (this.canMove(nx, ny)) {
+          this.dir = d;
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        this.moveCooldown = 20 + Math.floor(Math.random() * 40);
+      }
     }
   }
 
@@ -299,13 +315,13 @@ class Tank {
     // Check other tanks
     for (let tank of enemies) {
       if (tank === this || !tank.alive) continue;
-      let dx = this.x - tank.x;
-      let dy = this.y - tank.y;
+      let dx = nx - tank.x;
+      let dy = ny - tank.y;
       if (Math.abs(dx) < TANK_SIZE && Math.abs(dy) < TANK_SIZE) return false;
     }
     if (!this.isPlayer && player.alive) {
-      let dx = this.x - player.x;
-      let dy = this.y - player.y;
+      let dx = nx - player.x;
+      let dy = ny - player.y;
       if (Math.abs(dx) < TANK_SIZE && Math.abs(dy) < TANK_SIZE) return false;
     }
 
@@ -505,20 +521,35 @@ function initLevel() {
 }
 
 function spawnEnemyWave(count) {
+  // Unique spawn positions at map edges with clear exit path
   let spawns = [
-    { x: 9, y: 0 }, { x: 0, y: 0 }, { x: 19, y: 0 },
-    { x: 9, y: 0 }, { x: 1, y: 0 }, { x: 18, y: 0 },
+    { x: 1, y: 1 }, { x: 9, y: 1 }, { x: 18, y: 1 },
+    { x: 18, y: 9 }, { x: 1, y: 9 },
+    { x: 9, y: 1 }, { x: 1, y: 1 }, { x: 18, y: 1 },
   ];
   let colors = ['#e74c3c', '#e67e22', '#8e44ad', '#c0392b', '#d35400', '#7d3c98', '#f39c12', '#b71540'];
 
   for (let i = 0; i < count; i++) {
     let sp = spawns[i % spawns.length];
-    // Ensure spawn area is clear
     let sx = sp.x, sy = sp.y;
-    if (walls[sy][sx] !== EMPTY) {
-      walls[sy][sx] = EMPTY;
+
+    // Clear a 2x2 area around spawn so tank can get out
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        let cx = sx + dx, cy = sy + dy;
+        if (cy >= 0 && cy < ROWS && cx >= 0 && cx < COLS && walls[cy][cx] !== STEEL) {
+          walls[cy][cx] = EMPTY;
+        }
+      }
     }
-    enemies.push(new Tank(sx, sy, DIRECTIONS.DOWN, colors[i % colors.length], false));
+
+    // Offset spawn within the cell range to avoid overlapping
+    let ox = sx * CELL + CELL / 2 + (i % 3 - 1) * (CELL * 0.25);
+    let oy = sy * CELL + CELL / 2 + Math.floor(i / 3 % 2 - 0.5) * (CELL * 0.25);
+    let tank = new Tank(sx, sy, DIRECTIONS.DOWN, colors[i % colors.length], false);
+    tank.x = ox;
+    tank.y = oy;
+    enemies.push(tank);
   }
 }
 
